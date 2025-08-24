@@ -71,25 +71,81 @@ pub fn masked_softmax(y: &mut Tensor<f32>) {
 }
 
 pub fn rms_norm(y: &mut Tensor<f32>, x: &Tensor<f32>, w: &Tensor<f32>, epsilon: f32) {
-    todo!("实现 rms_norm，计算前做一些必要的检查会帮助你后续调试")
+    let len_x = x.size();
+    let len_w = w.size();
+    assert!(len_x % len_w == 0);
+
+    let y_data = unsafe { y.data_mut() };
+    let x_data = x.data();
+    let w_data = w.data();
+    let n = w.size();
+    let n_vecs = x.size() / n;
+
+    for i in 0..n_vecs {
+        let off = i * n;
+
+        // calculate mean
+        let mut sum_sq = 0.0;
+        for j in 0..n {
+            let v = x_data[off + j];
+            sum_sq += v * v;
+        }
+
+        let rms = (sum_sq / n as f32 + epsilon).sqrt();
+
+        for j in 0..n {
+            y_data[off + j] = x_data[off + j] * w_data[j] / rms;
+        }
+    }
+
+    // 均方根归一化，让输入向量的大小不会差别太大
 }
 
 // y = silu(x) * y
 // hint: this is an element-wise operation
 pub fn swiglu(y: &mut Tensor<f32>, x: &Tensor<f32>) {
-    // let len = y.size();
-    // assert!(len == x.size());
+    let len = y.size();
+    assert!(len == x.size());
 
-    // let _y = unsafe { y.data_mut() };
-    // let _x = x.data();
+    let _y = unsafe { y.data_mut() };
+    let _x = x.data();
 
-    todo!("实现 silu，这里给了一些前期准备工作的提示，你可以参考")
+    for i in 0..len {
+        let sig = 1.0 / (1.0 + (-_x[i]).exp());
+        _y[i] = _y[i] * sig * _x[i];
+    }
+
+    // todo!("实现 silu，这里给了一些前期准备工作的提示，你可以参考")
 }
 
 // C = beta * C + alpha * A @ B^T
 // hint: You don't need to do an explicit transpose of B
+// tensor里面没有实现transpose和stride，所以matmul实现2D就能满足需求了
 pub fn matmul_transb(c: &mut Tensor<f32>, beta: f32, a: &Tensor<f32>, b: &Tensor<f32>, alpha: f32) {
-    todo!("实现 matmul_transb，计算前做一些必要的检查会帮助你后续调试");
+    let (m, k) = (a.shape()[0], a.shape()[1]);
+    let (n, k_b) = (b.shape()[0], b.shape()[1]);
+    assert_eq!(
+        k, k_b,
+        "B must have the same number of columns as A has rows"
+    );
+    assert_eq!(c.shape(), &[m, n], "C must have shape [m, n] where m is the number of rows in A and n is the number of rows in B");
+
+    let a_data = a.data();
+    let b_data = b.data();
+    let c_data = unsafe { c.data_mut() };
+
+    // C(i, j) -> A(i, indx) * B(j, indx)
+    for i in 0..m {
+        for j in 0..n {
+            let mut sum = 0.0;
+            for l in 0..k {
+                sum += a_data[i * k + l] * b_data[j * k + l];
+            }
+            c_data[i * n + j] = beta * c_data[i * n + j] + alpha * sum;
+        }
+    }
+
+    // todo!("实现 matmul_transb，计算前做一些必要的检查会帮助你后续调试");
 }
 
 // Dot product of two tensors (treated as vectors)
